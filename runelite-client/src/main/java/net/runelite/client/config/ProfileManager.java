@@ -104,17 +104,17 @@ public class ProfileManager {
             if (modified) {
                 log.debug("saving {} profiles", profiles.size());
 
-				File tempFile = File.createTempFile("runelite_profiles", null, PROFILES_DIR);
-				try (FileOutputStream out = new FileOutputStream(tempFile);
-					FileChannel channel = lockOut.getChannel();
-					OutputStreamWriter writer = new OutputStreamWriter(out, StandardCharsets.UTF_8))
-				{
-					Profiles profilesData = new Profiles();
-					profilesData.setProfiles(profiles);
-					gson.toJson(profilesData, writer);
-					writer.flush();
-					channel.force(true);
-				}
+                File tempFile = File.createTempFile("runelite_profiles", null, PROFILES_DIR);
+                try (FileOutputStream out = new FileOutputStream(tempFile);
+                     FileChannel channel = lockOut.getChannel();
+                     OutputStreamWriter writer = new OutputStreamWriter(out, StandardCharsets.UTF_8))
+                {
+                    Profiles profilesData = new Profiles();
+                    profilesData.setProfiles(profiles);
+                    gson.toJson(profilesData, writer);
+                    writer.flush();
+                    channel.force(true);
+                }
 
                 try {
                     Files.move(tempFile.toPath(), PROFILES.toPath(), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
@@ -132,49 +132,49 @@ public class ProfileManager {
             return profiles;
         }
 
-		public ConfigProfile createProfile(String name, long id)
-		{
-			if (findProfile(id) != null)
-			{
-				throw new IllegalArgumentException("profile " + id + " already exists");
-			}
+        public ConfigProfile createProfile(String name, long id)
+        {
+            if (findProfile(id) != null)
+            {
+                throw new IllegalArgumentException("profile " + id + " already exists");
+            }
 
-			ConfigProfile profile = new ConfigProfile(id);
-			profile.setName(name);
-			profile.setSync(false);
-			profile.setRev(-1);
-			profile.setDefaultForRsProfiles(new ArrayList<>());
-			profiles.add(profile);
-			modified = true;
-			log.debug("Created profile {}", profile);
-			return profile;
-		}
+            ConfigProfile profile = new ConfigProfile(id);
+            profile.setName(name);
+            profile.setSync(false);
+            profile.setRev(-1);
+            profile.setDefaultForRsProfiles(new ArrayList<>());
+            profiles.add(profile);
+            modified = true;
+            log.debug("Created profile {}", profile);
+            return profile;
+        }
 
         public ConfigProfile createProfile(String name) {
             return createProfile(name, System.nanoTime());
         }
 
-		public ConfigProfile findProfile(String name)
-		{
-			return findProfile((profile) -> profile.getName().equals(name));
-		}
+        public ConfigProfile findProfile(String name)
+        {
+            return findProfile((profile) -> profile.getName().equals(name));
+        }
 
-		public ConfigProfile findProfile(long id)
-		{
-			return findProfile((profile) -> profile.getId() == id);
-		}
+        public ConfigProfile findProfile(long id)
+        {
+            return findProfile((profile) -> profile.getId() == id);
+        }
 
-		public ConfigProfile findProfile(Predicate<ConfigProfile> condition)
-		{
-			for (ConfigProfile configProfile: profiles)
-			{
-				if (condition.test(configProfile))
-				{
-					return configProfile;
-				}
-			}
-			return null;
-		}
+        public ConfigProfile findProfile(Predicate<ConfigProfile> condition)
+        {
+            for (ConfigProfile configProfile: profiles)
+            {
+                if (condition.test(configProfile))
+                {
+                    return configProfile;
+                }
+            }
+            return null;
+        }
 
         public void removeProfile(long id) {
             // keep the properties around on disk as a backup. If this profile is active on another client
@@ -188,27 +188,27 @@ public class ProfileManager {
             modified = true;
             File newFile = profileConfigFile(profile);
 
-			if (!oldFile.exists())
-			{
-				// no config file is valid if the profile hasn't been used yet.
-				log.info("Old profile file {} does not exist", oldFile.getName());
-				return;
-			}
+            if (!oldFile.exists())
+            {
+                // no config file is valid if the profile hasn't been used yet.
+                log.info("Old profile file {} does not exist", oldFile.getName());
+                return;
+            }
 
-			try
-			{
-				Files.move(
-					oldFile.toPath(),
-					newFile.toPath(),
-					StandardCopyOption.REPLACE_EXISTING
-				);
-				log.info("Renamed profile file {} to {}", oldFile.getName(), newFile.getName());
-			}
-			catch (IOException e)
-			{
-				log.error("error renaming profile", e);
-			}
-		}
+            try
+            {
+                Files.move(
+                        oldFile.toPath(),
+                        newFile.toPath(),
+                        StandardCopyOption.REPLACE_EXISTING
+                );
+                log.info("Renamed profile file {} to {}", oldFile.getName(), newFile.getName());
+            }
+            catch (IOException e)
+            {
+                log.error("error renaming profile", e);
+            }
+        }
 
         public void dirty() {
             modified = true;

@@ -84,6 +84,11 @@ public class Rs2Widget {
     }
 
     public static Widget getWidget(@Component int id) {
+        try{
+            Widget result = Microbot.getClientThread().runOnClientThread(() -> Microbot.getClient().getWidget(id));
+        }catch(Exception ex){
+            ex.printStackTrace();
+        }
         return Microbot.getClientThread().runOnClientThread(() -> Microbot.getClient().getWidget(id));
     }
 

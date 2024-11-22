@@ -329,8 +329,8 @@
 2908 3336 2	2908 3336 1	Climb-down;Staircase;11890				1	
 							
 # Killerwatt Plane							
-3110 3363 2	2677 5214 2	Enter;Interdimensional rift;11355			Ernest the Chicken	1	
-3111 3363 2	2677 5214 2	Enter;Interdimensional rift;11355			Ernest the Chicken	1	
+3110 3363 2	2677 5214 2	#Moons			Ernest the Chicken	1
+3111 3363 2	2677 5214 2	Enter;Interdimensional rift;11355			Ernest the Chicken	1
 							
 # Ferox Enclave							
 3140 3637 0	3137 3637 1	Climb;Stairs;39643				1	
@@ -4503,6 +4503,16 @@
 # Fortis Colosseum							
 1795 3107 0	1799 9506 0	Enter;Colosseum entrance;50749				8	
 1799 9506 0	1795 3107 0	Exit;Stairs;50750				8
-# Hunter Guild
+1423 9649 1
 1558 3047 0	1558 9451 0	Climb-down;Stairs;51641				8
 1558 9451 0	1558 3047 0	Climb-up;Stairs;51642				8
+# Moons
+1374 9668 0	1347 9590 0	Pass-through;Entrance;51377
+1347 9591 0	1374 9667 0	Pass-through;Entrance;51375
+1386 9590 0	1418 9632 0	Pass-through;Entrance;51375
+1318 9631 0	1387 9591 0	Pass-through;Entrance;51377
+1406 9632 0	1441 9637 0	Quick-escape;Stairs;53003
+1423 9649 1	1403 9717 0	Pass-through;Entrance;51376
+1423 9615 1	1388 9575 0	Pass-through;Entrance;51376
+1356 9538 0	1513 9563 0	Pass-through;Entrance;51375
+1512 9563 0	1355 9538 0	Pass-through;Entrance;51377
