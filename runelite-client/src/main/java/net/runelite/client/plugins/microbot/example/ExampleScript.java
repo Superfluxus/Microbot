@@ -431,7 +431,7 @@ public class ExampleScript extends Script {
         Rs2GameObject.interact(51346, "claim");
         sleepUntilTrue(() -> (!Rs2Player.isMoving() && !Rs2Player.isAnimating()));
         Microbot.log("Waiting for widget popup.");
-        long timeout = System.currentTimeMillis() + 10_000; // 10-second timeout
+        long timeout = System.currentTimeMillis() + 20_000; // 10-second timeout
 
         while (this.isRunning() && !Rs2Widget.isWidgetVisible(56885268)) {
             if (System.currentTimeMillis() > timeout) {
