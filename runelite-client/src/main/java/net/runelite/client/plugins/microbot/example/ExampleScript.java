@@ -1,25 +1,20 @@
 package net.runelite.client.plugins.microbot.example;
 
+import lombok.Getter;
 import net.runelite.api.*;
-import net.runelite.api.widgets.ComponentID;
 import net.runelite.api.widgets.Widget;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.plugins.microbot.Script;
-import net.runelite.client.plugins.microbot.globval.enums.InterfaceTab;
-import net.runelite.client.plugins.microbot.util.combat.Rs2Combat;
+import net.runelite.client.plugins.microbot.storm.plugins.PlayerMonitor.PlayerMonitorConfig;
+import net.runelite.client.plugins.microbot.storm.plugins.PlayerMonitor.PlayerMonitorPlugin;
 import net.runelite.client.plugins.microbot.util.dialogues.Rs2Dialogue;
 import net.runelite.client.plugins.microbot.util.gameobject.Rs2GameObject;
 import net.runelite.client.plugins.microbot.util.inventory.Rs2Inventory;
 import net.runelite.client.plugins.microbot.util.grounditem.Rs2GroundItem;
 import net.runelite.client.plugins.microbot.util.player.Rs2Player;
-import net.runelite.client.plugins.microbot.util.tabs.Rs2Tab;
-import net.runelite.client.plugins.microbot.util.tile.Rs2Tile;
 import net.runelite.client.plugins.microbot.util.walker.Rs2Walker;
-import net.runelite.client.plugins.microbot.breakhandler.BreakHandlerScript;
-import net.runelite.client.plugins.microbot.util.antiban.Rs2Antiban;
-import net.runelite.client.plugins.microbot.util.antiban.Rs2AntibanSettings;
 
 import java.util.*;
 
@@ -29,7 +24,6 @@ import net.runelite.client.plugins.microbot.util.npc.Rs2Npc;
 import net.runelite.client.plugins.microbot.util.widget.Rs2Widget;
 
 import javax.inject.Inject;
-import java.util.List;
 
 import java.util.concurrent.TimeUnit;
 
@@ -37,27 +31,22 @@ import static net.runelite.client.plugins.microbot.util.Global.sleepUntilTrue;
 
 enum ExampleState {
     COLLECT_SUPPLIES,
-    PREPARE_ITEMS,
-    GET_LIZARDS,
-    CLEANUP,
     GO_TO_FIGHT,
-    NORMAL_FIGHT,
-    MAIN_FIGHT,
     BLOOD_SPLATS,
     JAGUARS,
-    CLAIM_CHEST
+    CLAIM_CHEST,
+    IDLE
 }
 
 public class ExampleScript extends Script {
 
     @Inject
     private Client client;
-
-    private ExamplePlugin plugin;
-
     // Constructor to initialize plugin
-    public ExampleScript(ExamplePlugin plugin) {
+
+    public ExampleScript(ExamplePlugin plugin, ExampleConfig config) {
         this.plugin = plugin;
+        this.config = config;
     }
 
     private volatile boolean running = true;
@@ -69,6 +58,19 @@ public class ExampleScript extends Script {
     public void shutdown() {
         running = false;
     }
+
+    @Inject
+    private ExampleConfig config;
+    @Inject
+    private ExamplePlugin plugin;
+
+    public void setConfigAndPlugin(ExampleConfig config, ExamplePlugin plugin) {
+        this.config = config;
+        this.plugin = plugin;
+    }
+
+
+    @Inject
 
     //private ExampleState currentState = ExampleState.COLLECT_SUPPLIES;
 
@@ -96,8 +98,6 @@ public class ExampleScript extends Script {
     private static final int EN_ROUTE_STOVE = 51362;
     private boolean claimChest = false;
 
-
-
     private int sleepMin = 600;  // Default 500ms
     private int sleepMax = 2100; // Default 2100ms
     private int sleepTarget = 1200; // Midpoint as default
@@ -108,7 +108,6 @@ public class ExampleScript extends Script {
             new WorldPoint(1392, 9707, 0),
             new WorldPoint(1394, 9705, 0)
     };
-
     @Override
     public boolean run() {
         Microbot.enableAutoRunOn = false;
@@ -118,10 +117,11 @@ public class ExampleScript extends Script {
                 if (!Microbot.isLoggedIn()) {
                     return;
                 }
-                if(!this.isRunning()){
+                if (!this.isRunning()) {
                     return;
                 }
 
+                // Handle the current state
                 switch (currentState) {
                     case COLLECT_SUPPLIES:
                         preparePhase();
@@ -131,24 +131,20 @@ public class ExampleScript extends Script {
                         goToFight();
                         break;
 
-                    case NORMAL_FIGHT:
-                        normalfight();
-                        break;
-
-                    case MAIN_FIGHT:
-                        mainfight();
-                        break;
-
                     case BLOOD_SPLATS:
                         bloodsplats();
                         break;
 
                     case JAGUARS:
-                        jaguars();
+                        ensureSafeSpot();
                         break;
 
                     case CLAIM_CHEST:
                         claimChestReward();
+                        break;
+
+                    case IDLE:
+                        ensureSafeSpot();
                         break;
 
                     default:
@@ -164,6 +160,29 @@ public class ExampleScript extends Script {
 
         return true;
     }
+    public void transitionToState(ExampleState newState) {
+        if (currentState != newState) {
+            Microbot.log("Transitioning from " + currentState + " to " + newState);
+            currentState = newState;
+        } else {
+            Microbot.log("Already in state: " + currentState);
+        }
+    }
+
+    public void MoveToSafeSpot(WorldPoint safeSpotLocation) {
+        Microbot.log("Moving to new safe spot at: " + safeSpotLocation);
+        if (Rs2Player.getWorldLocation().distanceTo(safeSpotLocation) > 1) {
+            Rs2Walker.walkFastCanvas(safeSpotLocation);
+            sleep(calculateSleepDuration());
+            sleepUntilTrue(() -> (!Rs2Player.isMoving() &&
+                    Rs2Player.getWorldLocation().distanceTo(safeSpotLocation) <= 1), 300, 2500);
+            Microbot.log("Reached the safe spot.");
+        } else {
+            Microbot.log("Already at the safe spot.");
+        }
+        Rs2Npc.interact(13011, "Attack");
+    }
+
 
     private NPC findNpcById(int npcId) {
         return Microbot.getClient().getNpcs().stream()
@@ -172,21 +191,27 @@ public class ExampleScript extends Script {
                 .orElse(null);
     }
 
-    private boolean DoesSafeSpotExist(int safeSpotNpcId) {
+    private boolean isCurrentLocationDangerous() {
+        WorldPoint playerLocation = Rs2Player.getWorldLocation();
+        return plugin.getDangerousTiles().contains(playerLocation);
+    }
 
-        // Find the NPC representing the safe spot
-        NPC safeSpotNpc = Microbot.getClient().getNpcs().stream()
-                .filter(npc -> npc.getId() == safeSpotNpcId)
+    private void moveToSafeTile() {
+        WorldPoint safeTile = plugin.getSafeTiles().stream()
+                .sorted(Comparator.comparingInt(tile -> tile.distanceTo(Rs2Player.getWorldLocation())))
                 .findFirst()
                 .orElse(null);
 
-        if (safeSpotNpc == null) {
-            Microbot.log("Safe spot NPC with ID " + safeSpotNpcId + " not found.");
-            return false;
+        if (safeTile != null) {
+            Rs2Walker.walkFastCanvas(safeTile);
+            sleep(calculateSleepDuration());
+            sleepUntilTrue(() -> Rs2Player.getWorldLocation().equals(safeTile), 300, 5000);
+            Microbot.log("Moved to safe tile: " + safeTile);
+        } else {
+            Microbot.log("No safe tiles available. Staying in place.");
         }
-
-        return true;
     }
+
 
     private int calculateSleepDuration() {
 
@@ -251,200 +276,194 @@ public class ExampleScript extends Script {
     }
 
     private MissingResources validateInventoryDetailed() {
+        int requiredPotionDoses = config.requiredPotionDoses();
+        int requiredCookedLizards = config.requiredCookedLizards();
+
         int potionDoses = Rs2Inventory.count(FOURDOSE_ID) * 4 +
                 Rs2Inventory.count(THREEDOSE_ID) * 3 +
                 Rs2Inventory.count(TWODOSE_ID) * 2 +
                 Rs2Inventory.count(ONEDOSE_ID);
         int cookedLizards = Rs2Inventory.count(COOKED_LIZARD_ID);
 
-        int missingPotionDoses = Math.max(0, 2 - potionDoses); // At least 2 doses required
-        int missingCookedLizards = Math.max(0, 8 - cookedLizards); // At least 5 cooked lizards required
+        int missingPotionDoses = Math.max(0, requiredPotionDoses - potionDoses);
+        int missingCookedLizards = Math.max(0, requiredCookedLizards - cookedLizards);
 
         return new MissingResources(missingPotionDoses, missingCookedLizards);
     }
 
-    private void preparePhase() {
+    public void preparePhase() {
+        Microbot.log("State: Preparation Phase");
+        moveToStove(); // Ensure we are in the correct area
 
+        // Validate inventory and start preparation tasks
+        validateAndStartPreparation();
+    }
+
+    private void moveToStove() {
         WorldPoint stovePoint = new WorldPoint(1376, 9710, 0);
 
-        WorldPoint playerLocation = Rs2Player.getWorldLocation();
-
-        if(!(stovePoint.getPlane() == playerLocation.getPlane())){
-            Microbot.log("Currently in main chamber, try to walk to stove.");
+        if (!Rs2Player.getWorldLocation().equals(stovePoint)) {
+            Microbot.log("Moving to stove...");
             Rs2Walker.walkTo(stovePoint);
-            sleepUntilTrue(() -> (!Rs2Player.isAnimating()));
+            sleep(calculateSleepDuration());
+            sleepUntilTrue(() -> Rs2Player.getWorldLocation().distanceTo(stovePoint) <= 3);
+
         }
+    }
 
-        if (stovePoint.getPlane() == playerLocation.getPlane() && stovePoint.distanceTo(playerLocation) < 10) {
-            Microbot.log("Accurately walk to stove");
-            Rs2Walker.walkFastCanvas(stovePoint);
-            sleepUntilTrue(() -> !Rs2Player.isAnimating());
-        }
-
-        Microbot.log("State: Preparation Phase");
-
-        // Get inventory deficit
+    private void validateAndStartPreparation() {
         MissingResources missingResources = validateInventoryDetailed();
 
-        // Check for potion deficits
         if (missingResources.getMissingPotionDoses() > 0) {
-            Microbot.log("Missing potion doses: " + missingResources.getMissingPotionDoses());
-
-            // Step 1: Collect herblore supplies
-            if (Rs2GameObject.interact(SUPPLY_CRATE_ID, "Take-from Herblore")) {
-                Microbot.log("Collecting herblore supplies...");
-                sleepUntilTrue(() -> Rs2Inventory.count("Vial of water") > 2, 100, 5000);
-            }
-
-            // Step 2: Process grub into paste and make potions
-            if (Rs2GameObject.interact(GRUBBY_SAPLING_ID, "Collect-from")) {
-                Microbot.log("Interacting with Grubby Sapling to collect paste ingredients...");
-                sleepUntilTrue(() -> Rs2Inventory.count("Moonlight grub") > 3, 100, 5000);
-            }
-
-            while (this.isRunning() && Rs2Inventory.count(GRUB_ID) > 0) {
-                if (Rs2Inventory.combine(PESTLE_AND_MORTAR_ID, GRUB_ID)) {
-                    Microbot.log("Processing Moonlight Grub into paste...");
-                    sleepUntilTrue(() -> Rs2Inventory.count("Moonlight grub paste") > 2, 100, 5000);
-                }
-            }
-
-            while (this.isRunning() && Rs2Inventory.count(PASTE_ID) > 0 && Rs2Inventory.count(VIAL_ID) > 0) {
-                if (Rs2Inventory.combine(PASTE_ID, VIAL_ID)) {
-                    Microbot.log("Creating vials with Moonlight Grub paste...");
-                }
-                sleep(calculateSleepDuration());
-            }
-
-            int[] itemsToDrop = {ONEDOSE_ID, TWODOSE_ID, THREEDOSE_ID, VIAL_ID, GRUBPASTE_ID, PESTLE_AND_MORTAR_ID};
-
-            for (int itemId : itemsToDrop) {
-                while (this.isRunning() && Rs2Inventory.contains(itemId)) {
-                    Rs2Inventory.drop(itemId);
-                    sleep(400, 600);
-                }
-            }
-
-            missingResources = validateInventoryDetailed();
-            if (missingResources.getMissingPotionDoses() > 0) {
-                Microbot.log("Failed to get enough potion doses, restart potion making.");
-                return;
-            }
-        }
-
-        // Check for cooked lizard deficits
-        if (missingResources.getMissingCookedLizards() > 0) {
-            Microbot.log("Missing cooked lizards: " + missingResources.getMissingCookedLizards());
-
-            int lizardsNeeded = (int) Math.ceil(missingResources.getMissingCookedLizards() * 0.3);
-            if (lizardsNeeded <= 1) {
-                lizardsNeeded = 1;
-            }
-            Microbot.log("Need to collect at least " + lizardsNeeded + " raw lizards.");
-
-            if (!Rs2Inventory.contains("Rope")) {
-                Rs2GameObject.interact(SUPPLY_CRATE_ID, "Take-from Hunting");
-                sleepUntilTrue(() -> Rs2Inventory.count("Rope") > 1, 100, 5000);
-            }
-
-            while (this.isRunning() && Rs2Inventory.count("Raw moss lizard") < lizardsNeeded) {
-                // Step 3: Catch raw lizards
-                for (WorldPoint location : ROCK_LOCATIONS) {
-                    GameObject rock = Rs2GameObject.findObject(ROCK_ID, location);
-
-                    if (rock != null) {
-                        Microbot.log("Interacting with rock at: " + location);
-                        Rs2GameObject.interact(rock, ACTION);
-                        sleep(900,1200);
-                        sleep(calculateSleepDuration());
-                        sleepUntilTrue(() -> (!Rs2Player.isAnimating() && !Rs2Player.isMoving()));
-                        if (Rs2Dialogue.isInDialogue()) {
-                            if (Rs2Dialogue.hasContinue()) {
-                                Rs2Dialogue.clickContinue();
-                            }
-                        }
-                    }
-                    sleep(200, 350);
-                }
-
-                // Shake the tree to spawn lizards
-                if (Rs2GameObject.interact(TREE_ID, "Rustle")) {
-                    Microbot.log("Shaking the tree to spawn lizards...");
-                    sleep(calculateSleepDuration());
-                    sleepUntilTrue(() -> Rs2GroundItem.exists("Raw moss lizard", 20), 100, 10000);
-
-                    // Loot raw lizards until none are left nearby
-                    while (this.isRunning() && Rs2GroundItem.exists("Raw moss lizard", 20)) {
-                        sleep(calculateSleepDuration());
-                        Rs2GroundItem.loot("Raw moss lizard", 20);
-                        sleep(600,900);
-
-                    }
-                }
-            }
-            if (Rs2Inventory.hasItem("Raw moss lizard")) {
-                Microbot.log("Found raw moss lizard in inventory, attempting to cook");
-                Rs2Walker.walkFastCanvas(stovePoint);
-                sleepUntilTrue(() -> (!Rs2Player.isMoving() && !Rs2Player.isAnimating()));
-                Rs2GameObject.interact(STOVE_ID, "Cook");
-                sleepUntilTrue(() -> !Rs2Inventory.hasItem(RAW_LIZARD_ID), 100, 10000);
-            }
-            missingResources = validateInventoryDetailed();
-            if (missingResources.getMissingCookedLizards() > 0) {
-                Microbot.log("Failed to get enough lizards doses, restart.");
-                return;
-            }
-
-        }
-
-        // Final Validation
-        missingResources = validateInventoryDetailed();
-        if (missingResources.isComplete()) {
-            if (claimChest) {
-                Microbot.log("Claiming rewards from last kill en route.");
-                WorldPoint nearStove = new WorldPoint(1351, 9581, 0);
-                Rs2Walker.walkTo(nearStove);
-                sleepUntilTrue(() -> !Rs2Player.isAnimating());
-                Rs2GameObject.interact(EN_ROUTE_STOVE, "Make-cuppa");
-                sleep(calculateSleepDuration());
-                currentState = ExampleState.CLAIM_CHEST;
-                return;
-            }
-            Microbot.log("Preparation complete. Moving to GO_TO_FIGHT state.");
-            currentState = ExampleState.GO_TO_FIGHT;
+            collectPotionIngredients();
+        } else if (missingResources.getMissingCookedLizards() > 0) {
+            collectAndCookLizards();
         } else {
-            Microbot.log("Preparation incomplete. Retrying preparation phase.");
+            restoreRunEnergyIfNeeded();
+            sleep(calculateSleepDuration());
+            completePreparation();
         }
     }
 
-    private void claimChestReward() {
-        WorldPoint chestRoom = new WorldPoint(1513, 9563, 0);
-        Rs2Walker.walkTo(chestRoom);
-        sleepUntilTrue(() -> (!Rs2Player.isMoving() && !Rs2Player.isAnimating()));
-        sleep(1200,1800);
-        WorldPoint nearChest = new WorldPoint(1513, 9578, 0);
-        Microbot.log("Found chest room.");
-        Rs2Walker.walkFastCanvas(chestRoom);
-        sleep(calculateSleepDuration());
-        sleepUntilTrue(() -> (!Rs2Player.isMoving() && !Rs2Player.isAnimating()));
-        Microbot.log("Opening chest.");
-        Rs2GameObject.interact(51346, "claim");
-        sleep(calculateSleepDuration());
-        sleepUntilTrue(() -> (!Rs2Player.isMoving() && !Rs2Player.isAnimating()));
-        Microbot.log("Waiting for widget popup.");
-        sleep(calculateSleepDuration());
-        Rs2Widget.clickWidget(56885268);
-        sleep(calculateSleepDuration());
-        Microbot.log("Rewards claimed, ready to fight again");
-        plugin.setBossDead(false);
-        Microbot.log("Refuel enroute");
+    private void collectPotionIngredients() {
+        Microbot.log("Collecting potion ingredients...");
+
+        // Step 1: Take herblore supplies
+        if (Rs2GameObject.interact(SUPPLY_CRATE_ID, "Take-from Herblore")) {
+            Microbot.log("Taking herblore supplies...");
+            sleepUntilTrue(() -> Rs2Inventory.count("Vial of water") > 2, 100, 5000);
+
+        }
+
+        // Step 2: Collect grubs from sapling
+        if (Rs2GameObject.interact(GRUBBY_SAPLING_ID, "Collect-from")) {
+            Microbot.log("Collecting grubs from sapling...");
+            sleepUntilTrue(() -> Rs2Inventory.count("Moonlight grub") > 3, 100, 5000);
+
+        }
+
+        // Step 3: Process grubs into paste
+        while (Rs2Inventory.count(GRUB_ID) > 0) {
+            if (Rs2Inventory.combine(PESTLE_AND_MORTAR_ID, GRUB_ID)) {
+                Microbot.log("Processing grubs into paste...");
+                sleep(calculateSleepDuration());
+                sleepUntilTrue(() -> Rs2Inventory.count("Moonlight grub paste") < 2, 100, 5000);
+            }
+        }
+
+        // Step 4: Combine paste with vials
+        if (Rs2Inventory.combine(PASTE_ID, VIAL_ID)) {
+            Microbot.log("Creating potions...");
+            sleep(calculateSleepDuration());
+            sleepUntilTrue(() -> Rs2Inventory.count("Moonlight potion") > 0, 100, 5000);
+        }
+
+
+        // Drop excess resources
+        int[] itemsToDrop = {ONEDOSE_ID, TWODOSE_ID, THREEDOSE_ID, VIAL_ID, GRUBPASTE_ID, PESTLE_AND_MORTAR_ID};
+        for (int itemId : itemsToDrop) {
+            while (Rs2Inventory.contains(itemId)) {
+                Rs2Inventory.drop(itemId);
+                sleep(250,400);
+            }
+        }
+
+        // Validate again
+        validateAndStartPreparation();
+    }
+
+    private void collectAndCookLizards() {
+        Microbot.log("Collecting and cooking lizards...");
+
+        if (!Rs2Inventory.contains("Rope")) {
+            Rs2GameObject.interact(SUPPLY_CRATE_ID, "Take-from Hunting");
+            sleep(calculateSleepDuration());
+            sleepUntilTrue(() -> Rs2Inventory.count("Rope") > 0, 100, 5000);
+        }
+
+        interactWithRocksAndRustleTree();
+        cookLizards();
+        validateAndStartPreparation();
+    }
+
+    private void interactWithRocksAndRustleTree() {
+        for (WorldPoint location : ROCK_LOCATIONS) {
+            GameObject rock = Rs2GameObject.findObject(ROCK_ID, location);
+            if (rock != null && Rs2GameObject.interact(rock, ACTION)) {
+                Microbot.log("Interacting with rock at: " + location);
+                sleep(calculateSleepDuration());
+                sleepUntilTrue(() -> !Rs2Player.isMoving(), 300, 5000);
+            }
+        }
+
+        if (Rs2GameObject.interact(TREE_ID, "Rustle")) {
+            Microbot.log("Rustling tree to spawn lizards...");
+            sleep(calculateSleepDuration());
+            sleepUntilTrue(() -> !Rs2Player.isMoving(), 300, 5000);
+        }
+
+        while (Rs2GroundItem.exists("Raw moss lizard", 20)) {
+            Rs2GroundItem.loot("Raw moss lizard", 20);
+            sleep(calculateSleepDuration());
+        }
+    }
+
+    private void cookLizards() {
+        if (Rs2GameObject.interact(STOVE_ID, "Cook")) {
+            Microbot.log("Cooking lizards...");
+            sleep(calculateSleepDuration());
+            sleepUntilTrue(() -> !Rs2Inventory.hasItem(RAW_LIZARD_ID), 300, 5000);
+        }
+    }
+
+    private void completePreparation() {
+        Microbot.log("Preparation complete. Moving to GO_TO_FIGHT state.");
+        transitionToState(ExampleState.GO_TO_FIGHT);
+    }
+    private void claimChest() {
+        Microbot.log("Opening chest...");
+        Rs2GameObject.interact(51346, "Claim");
+
+        sleepUntilTrue(() -> Rs2Widget.isWidgetVisible(56885268), 100, 5000); // Wait for chest reward widget to appear
+
+        if (Rs2Widget.isWidgetVisible(56885268)) {
+            Rs2Widget.clickWidget(56885268); // Confirm rewards
+            Microbot.log("Rewards claimed.");
+        } else {
+            Microbot.log("Failed to claim rewards. Widget not visible.");
+        }
+    }
+
+    private void refuelAtStove() {
+        Microbot.log("Refueling at stove...");
         WorldPoint nearStove = new WorldPoint(1351, 9581, 0);
         Rs2Walker.walkTo(nearStove);
-        sleepUntilTrue(() -> !Rs2Player.isAnimating());
+        sleep(calculateSleepDuration());
+        sleepUntilTrue(() -> !Rs2Player.isAnimating(), 300, 5000);
         Rs2GameObject.interact(EN_ROUTE_STOVE, "Make-cuppa");
         sleep(calculateSleepDuration());
-        currentState = ExampleState.GO_TO_FIGHT;
     }
+
+
+
+    private void claimChestReward() {
+        Microbot.log("State: Claiming Chest Reward");
+
+        // Navigate to the chest room
+        Rs2Walker.walkTo(new WorldPoint(1513, 9563, 0));
+        sleep(calculateSleepDuration());
+        sleepUntilTrue(() -> (!Rs2Player.isMoving() && !Rs2Player.isAnimating()), 300, 5000);
+
+        // Interact with the chest
+        claimChest();
+
+        // Refuel en route
+        refuelAtStove();
+
+        // Transition to the next state
+        transitionToState(ExampleState.GO_TO_FIGHT);
+    }
+
 
 
     private boolean safeWalkTo(WorldPoint target) {
@@ -470,247 +489,121 @@ public class ExampleScript extends Script {
         }
     }
 
+    private boolean isChestWidgetVisible() {
+        boolean visible = Rs2Widget.isWidgetVisible(56950788);
+        if (visible) {
+            Microbot.log("Chest widget is visible. Transitioning to CLAIM_CHEST.");
+        }
+        return visible;
+    }
 
-    private void goToFight() {
-        Microbot.log("State: GoToFight");
-        Widget parentWidget = null;
-        boolean visibleTick = Rs2Widget.isWidgetVisible(56950788);
-        if (visibleTick) {
-            currentState = ExampleState.CLAIM_CHEST;
+    private void updateFoodCount() {
+        int cookedLizardsCount = Rs2Inventory.count(COOKED_LIZARD_ID);
+        plugin.setFoodCount(cookedLizardsCount);
+        Microbot.log("Updated food count: " + cookedLizardsCount);
+    }
+
+    private void restoreRunEnergyIfNeeded() {
+        int runEnergy = Microbot.getClient().getEnergy();
+        if (runEnergy < 6500) {
+            Microbot.log("Low run energy detected. Restoring...");
+            WorldPoint stovePoint = new WorldPoint(1376, 9710, 0);
+            Rs2Walker.walkFastCanvas(stovePoint);
+            sleep(calculateSleepDuration());
+            sleepUntilTrue(() -> (!Rs2Player.isMoving() && !Rs2Player.isAnimating()), 300, 5000);
+            Rs2GameObject.interact(STOVE_ID, "Make-cuppa");
+            sleepUntilTrue(() -> (!Rs2Player.isMoving() && !Rs2Player.isAnimating()), 300, 5000);
+        }
+        Rs2Player.toggleRunEnergy(true);
+        Microbot.log("Run energy restored and toggled on.");
+    }
+
+    private void ensureBoostedDefence() {
+        int rawDefence = Rs2Player.getRealSkillLevel(Skill.DEFENCE);
+        int boostedDefence = Rs2Player.getBoostedSkillLevel(Skill.DEFENCE);
+
+        if (boostedDefence - rawDefence < 5) {
+            Microbot.log("Boosting defence with Moonlight potion...");
+            Rs2Inventory.interact("Moonlight potion", "Drink");
+            sleepUntilTrue(() -> Rs2Player.getBoostedSkillLevel(Skill.DEFENCE) > rawDefence, 100, 5000);
+        } else {
+            Microbot.log("Defence boost not needed.");
+        }
+    }
+
+    private void waitForJaguarToDespawn() {
+        Microbot.log("Checking for Jaguar phase...");
+        NPC jaguar = findNpcById(13021);
+
+        if (jaguar == null) {
+            Microbot.log("No Jaguar present. Proceeding to fight.");
             return;
         }
 
-        int cookedLizardsCount = Rs2Inventory.count(COOKED_LIZARD_ID); // Replace with the correct ID for cooked lizards
-        plugin.setFoodCount(cookedLizardsCount);
+        Microbot.log("Jaguar detected. Waiting for despawn...");
+        sleepUntilTrue(() -> findNpcById(13021) == null, 100, 10000);
+        Microbot.log("Jaguar has despawned. Proceeding to fight.");
+    }
 
+    public void handleIdleState() {
+        Microbot.log("State: IDLE");
+    }
+
+
+    private void goToFight() {
+        Microbot.log("State: GoToFight");
         int runEnergy = Microbot.getClient().getEnergy();
         if (runEnergy < 6500) {
             WorldPoint stovePoint = new WorldPoint(1376, 9710, 0);
             Rs2Walker.walkFastCanvas(stovePoint);
-            sleepUntilTrue(() -> (!Rs2Player.isMoving() && !Rs2Player.isAnimating()));
+            sleep(calculateSleepDuration());
+            sleepUntilTrue(() -> (!Rs2Player.isMoving() && !Rs2Player.isAnimating()), 300, 25000);
             Rs2GameObject.interact(STOVE_ID, "Make-cuppa");
         }
-        Rs2Player.toggleRunEnergy(true);
 
-        Microbot.log("Walking to Blood Moon Area");
+        // Check if chest is visible
+        if (isChestWidgetVisible()) {
+            transitionToState(ExampleState.CLAIM_CHEST);
+            return;
+        }
 
-        WorldPoint fightRoom = new WorldPoint(1418, 9632, 0);
-        WorldPoint balcony = new WorldPoint(1410, 9630, 0);
-        while (this.isRunning() && !Rs2Player.getWorldLocation().equals(fightRoom)) {
-            Rs2Walker.walkTo(fightRoom);
-            sleep(calculateSleepDuration());
-        }
-        Microbot.log("Walking to Balcony");
-        while (this.isRunning() && !Rs2Player.getWorldLocation().equals(balcony)) {
-            Rs2Walker.walkFastCanvas(balcony);
-            sleep(calculateSleepDuration());
-        }
+        // Update food count
+        updateFoodCount();
+
+        // Walk to fight area and prepare
+        Rs2Walker.walkTo(new WorldPoint(1418, 9632, 0));
         sleep(calculateSleepDuration());
+        sleepUntilTrue(() -> (!Rs2Player.isMoving() && !Rs2Player.isAnimating()), 300, 25000);
+        Rs2Walker.walkFastCanvas(new WorldPoint(1410, 9630, 0));
+        sleep(calculateSleepDuration());
+        sleepUntilTrue(() -> (!Rs2Player.isMoving() && !Rs2Player.isAnimating()), 300, 5000);
 
-        // Drink potion
-        int rawStrength = Rs2Player.getRealSkillLevel(Skill.DEFENCE);
-        int realStrength = Rs2Player.getBoostedSkillLevel(Skill.DEFENCE);
-        if ((realStrength - rawStrength < 5)) {
-            Rs2Inventory.interact("Moonlight potion", "Drink");
-        }
+        // Drink potion if needed
+        ensureBoostedDefence();
 
-        // Is jaguar phase on?
+        // Handle Jaguar phase if active
+        waitForJaguarToDespawn();
 
-        NPC jaguaralive = findNpcById(13021);
-        if (jaguaralive == null) {
-            Microbot.log("Enter fight");
-        } else {
-            while (this.isRunning() && jaguaralive != null) {
-                jaguaralive = findNpcById(13021);
-                sleep(calculateSleepDuration());
-            }
-        }
-
-
-        if (safeInteractWithGameObject(51372, "Use")) { // Interact with the fight object
-            Microbot.log("Successfully interacted to start the fight.");
+        // Interact with fight object
+        if (safeInteractWithGameObject(51372, "Use")) {
+            Microbot.log("Successfully started the fight.");
             plugin.setBossDead(false);
+            transitionToState(ExampleState.IDLE);
         } else {
             Microbot.log("Failed to start the fight.");
         }
-
-        sleep(1200, 1500);
-
-        // Transition to the next state
-        currentState = ExampleState.NORMAL_FIGHT;
     }
-
-    private void normalfight() {
-        Microbot.log("Entering fight!");
-
-        // Step 1: Run to the safe spot
-        Microbot.log("Checking for safe spot...");
-        NPC safeSpotNpc = plugin.getNearestSafeSpotNpc(Rs2Player.getWorldLocation());
-        if (safeSpotNpc == null) {
-            Microbot.log("No safe spot NPC found. Attacking boss directly.");
-        } else {
-            WorldPoint safeSpot = safeSpotNpc.getWorldLocation();
-            Microbot.log("Safe spot found at: " + safeSpot + ". Moving there...");
-            Rs2Walker.walkFastCanvas(safeSpot);
-            sleepUntilTrue(() -> (!Rs2Player.isMoving() && !Rs2Player.isAnimating()));
-            Microbot.log("Reached safe spot: " + safeSpot);
-        }
-
-        // Step 2: Hit the boss
-        sleepUntilTrue(() -> !(Rs2Player.isMoving() && Rs2Player.isAnimating()));
-        Rs2Npc.interact(13011, "Attack");
-
-        Microbot.log("Start main fight loop");
-        currentState = ExampleState.MAIN_FIGHT;
-    }
-
-    private void mainfight() {
-        Microbot.log("Waiting for an event: safe spot moves, Moonfire spawns, or Jaguar spawns.");
-        boolean safespotexists = false;
-        WorldPoint safeSpotLocation = null;
-        WorldPoint playerLocation = Rs2Player.getWorldLocation();
-        Rs2Npc.interact(13011, "Attack");
-        ;
-        while (this.isRunning() && true) {
-            int currentCount = Rs2Inventory.count(COOKED_LIZARD_ID);
-            if (currentCount > 0) {
-                Rs2Player.eatAt(75);
-            } else {
-                if((Rs2Player.getBoostedSkillLevel(Skill.HITPOINTS) < 50)){
-                    Microbot.log("Trying to escape as food count is"  + Rs2Inventory.count(COOKED_LIZARD_ID) + "and our HP count is " + Rs2Player.getBoostedSkillLevel(Skill.HITPOINTS));
-                    Rs2GameObject.interact(53003, "Quick-escape");
-                    sleep(3000);
-                    currentState = ExampleState.COLLECT_SUPPLIES;
-                    return;
-            }else{
-                    Microbot.log("We have no food but we do have " + Rs2Player.getBoostedSkillLevel(Skill.HITPOINTS) + "HP");
-                }
-            }
-            safeSpotLocation = plugin.getCurrentSafeSpot();
-            safespotexists = plugin.isSafeSpotAvailable();
-
-            // Check if Moonfire spawns
-            if (Rs2GameObject.exists(51054)) {
-                Microbot.log("Moonfire detected! Transitioning to BLOOD_SPLATS state.");
-                currentState = ExampleState.BLOOD_SPLATS;
-                return; // Exit the entire function
-            }
-
-            // Check if Jaguar spawns
-            if (plugin.isJaguarSpawned()) { // Poll the boolean value
-                Microbot.log("Jaguar detected! Transitioning to JAGUARS state.");
-                currentState = ExampleState.JAGUARS;
-                return; // Exit the entire function
-            }
-
-            // Check for fight finished
-            if (plugin.isBOSS_DEAD()) {
-                claimChest = true;
-                Microbot.log("Boss is dead, restart loop.");
-                currentState = ExampleState.COLLECT_SUPPLIES;
-                return;
-            }
-            if (!safespotexists) {
-                continue;
-            }
-            if (safespotexists && playerLocation.distanceTo(safeSpotLocation) > 1) {
-
-                Microbot.log("Safe spot exists and we're not on it! Moving to the safe spot.");
-                Rs2Walker.walkFastCanvas(safeSpotLocation);
-                sleep(450,600);
-
-                sleepUntilTrue(() ->
-                        (!Rs2Player.isAnimating() && !Rs2Player.isMoving())
-                                && (Rs2Player.getAnimation() != 1660 || Rs2Player.getAnimation() != 1661)
-                );
-                Rs2Npc.interact(13011, "Attack");
-                Rs2Antiban.actionCooldown();
-                playerLocation = Rs2Player.getWorldLocation();
-            }
-            sleep(600,900);
-        }
-    }
-
-    private void updateSafeTiles() {
-        WorldPoint playerLocation = Rs2Player.getWorldLocation();
-        Set<WorldPoint> dangerousTiles = plugin.getDangerousTiles();
-        Set<WorldPoint> safeTiles = plugin.getSafeTiles();
-
-        // Get walkable tiles around the player
-        List<WorldPoint> walkableTiles = Rs2Tile.getWalkableTilesAroundTile(playerLocation, 1);
-
-        // Clear and repopulate the TreeSet with updated safe tiles
-        safeTiles.clear();
-        for (WorldPoint tile : walkableTiles) {
-            if (!dangerousTiles.contains(tile)) {
-                safeTiles.add(tile); // Add tiles that aren't dangerous
-            }
-        }
-    }
-
-    private boolean isCurrentLocationDangerous() {
-        // Get the player's current location
-        WorldPoint playerLocation = Rs2Player.getWorldLocation();
-
-        // Get the dangerous tiles set from the plugin
-        Set<WorldPoint> dangerousTiles = plugin.getDangerousTiles();
-
-        // Check if the player's current location is in the dangerous tiles set
-        boolean isDangerous = dangerousTiles.contains(playerLocation);
-
-        return isDangerous;
-    }
-
 
     private void bloodsplats() {
         Microbot.log("Entering blood splats phase...");
 
-        // Find the ExamplePlugin instance
-        ExamplePlugin plugin = (ExamplePlugin) Microbot.getPluginManager().getPlugins().stream()
-                .filter(p -> p.getClass().getName().contains("ExamplePlugin"))
-                .findFirst()
-                .orElse(null);
-
-        if (plugin == null) {
-            Microbot.log("Error: Could not find ExamplePlugin instance!");
-            return;
+        if (isCurrentLocationDangerous()) {
+            Microbot.log("Player is on a dangerous tile. Moving to a safe location...");
+            moveToSafeTile();
         }
 
-        // Track the existing safespot NPCs at the start of this phase
-        Set<NPC> knownSafeSpots = new HashSet<>(plugin.getSafeSpotNpcs());
-        Microbot.log("Tracking initial safespot NPCs: " + knownSafeSpots);
-
-        while (this.isRunning() && Rs2GameObject.exists(51054)) {
-            sleep(200, 400);
-            // Continuously fetch the current safespot NPCs
-
-
-            updateSafeTiles();
-            if (isCurrentLocationDangerous()) {
-                Microbot.log("Current tile is dangerous. Moving to a safe tile...");
-                WorldPoint safeTile = plugin.getSafeTiles().stream()
-                        .sorted(Comparator.comparingInt(tile -> tile.distanceTo(Rs2Player.getWorldLocation())))
-                        .findFirst()
-                        .orElse(null);
-
-                if (safeTile != null) {
-                    Rs2Walker.walkFastCanvas(safeTile);
-                    sleepUntilTrue(() -> Rs2Player.getWorldLocation().equals(safeTile));
-                } else {
-                    Microbot.log("No safe tiles found. Staying in place.");
-                }
-            }
-        }
-        Set<NPC> currentSafeSpots = plugin.getSafeSpotNpcs();
-        NPC safeSpotNpc = plugin.getNearestSafeSpotNpc(Rs2Player.getWorldLocation());
-        if (plugin.isSafeSpotAvailable()) {
-            WorldPoint playerLocation = Rs2Player.getWorldLocation();
-            WorldPoint safeSpotLocation = safeSpotNpc.getWorldLocation();
-            Rs2Walker.walkFastCanvas(safeSpotLocation);
-            sleepUntilTrue(() -> (!Rs2Player.isMoving() && !Rs2Player.isAnimating() && playerLocation.distanceTo(safeSpotLocation) <= 1));
-        }
-        Microbot.log("Moonfire has gone, back to MainFight logic.");
-        currentState = ExampleState.MAIN_FIGHT;
+        Microbot.log("Listening for dangerous tile events...");
+        // No need for a while loop here; events will handle the transitions
     }
 
     private void waitForNextTick(int currentTick) {
@@ -719,129 +612,49 @@ public class ExampleScript extends Script {
         }
     }
 
+    private void handleBossDeath(){
+        Microbot.log("awooga");
+    }
 
-    private void jaguars() {
-        Microbot.log("Starting Jaguar Phase...");
-        boolean resync = false;
-
-        // Ensure plugin instance is available
-        for (Plugin p : Microbot.getPluginManager().getPlugins()) {
-            if (p instanceof ExamplePlugin) {
-                plugin = (ExamplePlugin) p;
-                break;
-            }
+    public void moveBackwardsToBloodSpot() {
+        WorldPoint bloodSpot = plugin.getClosestBloodSplat(Rs2Player.getWorldLocation());
+        if (bloodSpot != null && Rs2Player.getWorldLocation().distanceTo(bloodSpot) > 1) {
+            Microbot.log("Moving backwards to blood spot at: " + bloodSpot);
+            Rs2Walker.walkFastCanvas(bloodSpot);
+            sleepUntilTrue(() -> Rs2Player.getWorldLocation().equals(bloodSpot));
+        } else {
+            Microbot.log("No valid blood spot found. Staying in position.");
         }
+    }
 
-        // Check for a safe spot NPC
-        NPC safeSpotNpc = plugin.getNearestSafeSpotNpc(Rs2Player.getWorldLocation());
-        if (safeSpotNpc == null) {
-            Microbot.log("No safe spot NPC found. Exiting Jaguar Phase.");
-            currentState = ExampleState.MAIN_FIGHT;
+    public void attackJaguar() {
+        NPC jaguar = findNpcById(13021);
+        if (jaguar == null) {
+            Microbot.log("No Jaguar found. Skipping attack.");
             return;
         }
 
-        // Move to safe spot if necessary
-        WorldPoint safeSpotLocation = safeSpotNpc.getWorldLocation();
+        Rs2Npc.interact(jaguar, "Attack");
+    }
+
+
+    public void ensureSafeSpot() {
+        WorldPoint safeSpotLocation = plugin.getCurrentSafeSpot();
+        if (safeSpotLocation == null) {
+            Microbot.log("No safe spot available. Staying in place.");
+            return;
+        }
+
         if (Rs2Player.getWorldLocation().distanceTo(safeSpotLocation) > 1) {
-            final WorldPoint temp = safeSpotLocation;
-            Microbot.log("Moving to the safe spot at: " + safeSpotLocation);
+            Microbot.log("Moving to safe spot: " + safeSpotLocation);
             Rs2Walker.walkFastCanvas(safeSpotLocation);
-            sleepUntilTrue(() -> !Rs2Player.isMoving() && Rs2Player.getWorldLocation().distanceTo(temp) <= 1);
+            sleep(calculateSleepDuration());
+            sleepUntilTrue(() -> (Rs2Player.getWorldLocation().distanceTo(safeSpotLocation) <= 1) && !Rs2Player.isMoving(), 300, 5000);
+            Microbot.log("Reached safe spot.");
         }
+    }
 
-        // Attack Jaguar initially
-        Rs2Npc.interact(13021, "Attack");
-
-        Microbot.log("At safe spot. Waiting for blood splats and Jaguar cycle.");
-
-        // Main loop: Process Jaguar phase
-        while (this.isRunning()){
-            NPC jaguar = plugin.findNpcById(13021);
-            if (jaguar == null) {
-                Microbot.log("Jaguar despawned. Exiting Jaguar Phase.");
-                currentState = ExampleState.MAIN_FIGHT;
-                return;
-            }
-            if (plugin.isBOSS_DEAD()) {
-                claimChest = true;
-                Microbot.log("Boss is dead, restart loop.");
-                currentState = ExampleState.COLLECT_SUPPLIES;
-                return;
-            }
-
-            // Monitor for blood splats
-            WorldPoint closestBloodSplat = plugin.getClosestBloodSplat(Rs2Player.getWorldLocation());
-            while (this.isRunning() && closestBloodSplat == null ||
-                    !plugin.getDangerousTiles().contains(closestBloodSplat) ||
-                    Rs2Player.getWorldLocation().distanceTo(closestBloodSplat) > 1) {
-                closestBloodSplat = plugin.getClosestBloodSplat(Rs2Player.getWorldLocation());
-                sleep(200, 400);
-            }
-
-
-            // Handle attack cycle
-            if (!plugin.isJaguarAttacked()) {
-                Microbot.log("Attacking Jaguar...");
-                Rs2Npc.interact(13021, "Attack");
-                sleep(200, 400); // Wait for the action
-            }
-
-            // Tick monitoring logic
-            int tickCounter = 0;
-            int baseTick = plugin.getLastJaguarAttackTick(); // Synchronize with last attack tick
-            resync = plugin.isResyncTicks();
-            Microbot.log("Current state of resync:" + resync);
-
-            if (baseTick == -1) {
-                Microbot.log("Jaguar has not attacked yet. Waiting...");
-                sleepUntilTrue(() -> plugin.getLastJaguarAttackTick() != -1);
-                baseTick = plugin.getLastJaguarAttackTick();
-            }
-            Rs2Player.eatAt(80);
-
-            while (this.isRunning() && plugin.findNpcById(13021) != null) {
-                int playerHP = Rs2Player.getBoostedSkillLevel(Skill.HITPOINTS);
-                int foodRemaining = Rs2Inventory.count(COOKED_LIZARD_ID);
-                if (playerHP < 35) {
-                    Microbot.log("Trying to escape as our HP count is " + Rs2Player.getBoostedSkillLevel(Skill.HITPOINTS));
-                    Rs2GameObject.interact(53003, "Quick-escape");
-                    sleep(3000);
-                    currentState = ExampleState.COLLECT_SUPPLIES;
-                    return;
-                }
-
-                if(resync){
-                    safeSpotLocation = safeSpotNpc.getWorldLocation();
-                    final WorldPoint temp = safeSpotLocation;
-                    if (Rs2Player.getWorldLocation().distanceTo(safeSpotLocation) > 1) {
-                        Microbot.log("Moving to the safe spot at: " + safeSpotLocation);
-                        Rs2Walker.walkFastCanvas(safeSpotLocation);
-                        sleepUntilTrue(() -> !Rs2Player.isMoving() && Rs2Player.getWorldLocation().distanceTo(temp) <= 1);
-                    }
-                    plugin.setResync(false);
-                }
-                int currentTick = plugin.getElapsedTicks();
-                closestBloodSplat = plugin.getClosestBloodSplat(Rs2Player.getWorldLocation());
-
-                // Calculate tick offset from the last Jaguar attack
-                int offset = (currentTick - baseTick) % 6;
-
-                if (offset == 0) {
-                    if (closestBloodSplat != null) {
-                        Rs2Walker.walkFastCanvas(closestBloodSplat);
-                    }
-                } else if (offset == 1) {
-                    Rs2Npc.interact(13021, "Attack");
-                }
-
-                if (offset == 0) {
-                    tickCounter = 0; // Reset counter to synchronize with the Jaguar
-                }
-
-                waitForNextTick(currentTick);
-                tickCounter++;
-            }
-
-        }
+    public ExampleState getCurrentState() {
+        return currentState;
     }
 }

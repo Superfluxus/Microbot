@@ -21,6 +21,9 @@ import net.runelite.api.annotations.HitsplatType;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.*;
+import net.runelite.client.config.Config;
+import net.runelite.client.config.ConfigGroup;
+import net.runelite.client.config.ConfigItem;
 import javax.inject.Inject;
 
 import net.runelite.client.plugins.microbot.util.player.Rs2Player;
@@ -44,6 +47,15 @@ import net.runelite.client.util.Text;
         tags = {"example", "supply crate", "microbot"}
 )
 public class ExamplePlugin extends Plugin {
+
+    @Inject
+    private ExampleConfig config;
+
+    @Provides
+    ExampleConfig provideConfig(ConfigManager configManager) {
+        return configManager.getConfig(ExampleConfig.class);
+    }
+
     private static final int SAFE_SPOT_NPC_ID = 13015;
 
     @Getter
@@ -76,15 +88,14 @@ public class ExamplePlugin extends Plugin {
 
     private String BOSS_DEAD_MSG = "the blood moon of peril is sufficiently distracted";
 
-    private int JAGUAR_NPC_ID = 13021;
+    private static final int JAGUAR_NPC_ID = 13021;
+
+    private static final int MOONFIRE_ID =51054;
 
     @Getter
     private boolean BOSS_DEAD = false;
 
     private ExampleScript script;
-
-    @Inject
-    private ConfigManager configManager;
 
     public void resetJaguarAttackFlag() {
         jaguarAttacked = false;
@@ -94,7 +105,7 @@ public class ExamplePlugin extends Plugin {
 
     @Override
     protected void startUp() throws Exception {
-        script = new ExampleScript(this);
+        script = new ExampleScript(this, config);
         script.run(); // Start the script
     }
 
@@ -121,11 +132,23 @@ public class ExamplePlugin extends Plugin {
                 .min(Comparator.comparingInt(tile -> tile.distanceTo(currentPlayerLocation)))
                 .orElse(null);
     }
-
     @Subscribe
-    public void onGameTick(GameTick gameTick) {
-        elapsedTicks = elapsedTicks + 1;
+    public void onGameTick(GameTick event) {
+
+        if (!jaguarSpawned || script.getCurrentState() != ExampleState.JAGUARS) {
+            return; // Do nothing if Jaguar is not active or not in Jaguar state
+        }
+
+        int currentTick = elapsedTicks; // Tracks game ticks globally
+        int offset = (currentTick - lastJaguarAttackTick) % 6; // Calculate tick sync with Jaguar attack
+
+        if (offset == 0) {
+            script.moveBackwardsToBloodSpot();
+        } else if (offset == 1) {
+            script.attackJaguar();
+        }
     }
+
 
     @Inject
     private Client client;
@@ -146,28 +169,33 @@ public class ExamplePlugin extends Plugin {
     public void onGameObjectSpawned(GameObjectSpawned event) {
         Tile tile = event.getTile();
         TileObject gameObject = event.getGameObject();
-        // Check if the game object is null or not in the whitelist
+
         if (gameObject == null || !WHITELISTED_OBJECT_IDS.contains(gameObject.getId())) {
             return; // Skip processing for non-whitelisted objects
         }
 
-        if (tile == null || gameObject == null) {
+        WorldPoint tileLocation = tile.getWorldLocation();
+        if (tileLocation == null) {
             return;
         }
 
         try {
-            WorldPoint tileLocation = tile.getWorldLocation();
-            if (tileLocation == null) {
+            int objectId = gameObject.getId();
+            if (objectId == 51046) { // Example: blood splat ID
+                dangerousTiles.add(tileLocation);
 
-                return;
+
             }
-
-
-            onTileObject(tile, null, gameObject);
+            if (objectId == MOONFIRE_ID){
+                if (script != null) {
+                    script.transitionToState(ExampleState.BLOOD_SPLATS);
+                }
+            }
         } catch (Exception e) {
             Microbot.log("Error processing GameObjectSpawned event: " + e.getMessage());
         }
     }
+
 
     public void setFoodCount(int count)
     {
@@ -182,49 +210,76 @@ public class ExamplePlugin extends Plugin {
         Tile tile = event.getTile();
         TileObject gameObject = event.getGameObject();
 
-        // Check if the game object is null or not in the whitelist
         if (gameObject == null || !WHITELISTED_OBJECT_IDS.contains(gameObject.getId())) {
             return; // Skip processing for non-whitelisted objects
         }
 
-        if (tile == null || gameObject == null) {
+        WorldPoint tileLocation = tile.getWorldLocation();
+        if (tileLocation == null) {
             return;
         }
 
         try {
-            WorldPoint tileLocation = tile.getWorldLocation();
-            if (tileLocation == null) {
-
-                return;
+            int objectId = gameObject.getId();
+            if (objectId == 51046) { // Example: blood splat ID
+                dangerousTiles.remove(tileLocation);
             }
 
-
-            onTileObject(tile, gameObject, null);
+            if (objectId == MOONFIRE_ID){
+                if (script != null) {
+                    script.transitionToState(ExampleState.IDLE);
+                }
+            }
         } catch (Exception e) {
             Microbot.log("Error processing GameObjectDespawned event: " + e.getMessage());
         }
     }
 
+
     @Subscribe
     public void onNpcSpawned(NpcSpawned npcSpawned) {
         NPC npc = npcSpawned.getNpc();
-        // Check if the game object is null or not in the whitelist
-        if (npcSpawned == null || !WHITELISTED_NPC_IDS.contains(npc.getId())) {
-            return; // Skip processing for non-whitelisted objects
+        int id = npc.getId();
+        if (npc == null || !WHITELISTED_NPC_IDS.contains(id)) {
+            return; // Skip processing for non-whitelisted NPCs
         }
 
-        // Ensure NPC is not null and matches the safe spot NPC ID
-        if (npc != null && npc.getId() == SAFE_SPOT_NPC_ID) {
-            // Add the NPC to the safeSpotNpcs set
-            Microbot.log("New Safe Spot just spawned: " + npc);
-            safeSpotNpcs.add(npc);
-            currentSafeSpot = npc.getWorldLocation();
+        switch (id) {
+            case SAFE_SPOT_NPC_ID:
+                Microbot.log("New Safe Spot just spawned: " + npc);
+                currentSafeSpot = npc.getWorldLocation();
+
+                // Notify the script to move to the new safe spot
+                if (script != null) {
+                    script.MoveToSafeSpot(currentSafeSpot); // Trigger movement logic in the script
+                };
+                break;
+
+            case JAGUAR_NPC_ID:
+                jaguarSpawned = true;
+                Microbot.log("Jaguar has spawned.");
+
+                // Notify the script to transition to the JAGUARS state
+                if (script != null) {
+                    script.transitionToState(ExampleState.JAGUARS);
+                };
+                break;
+            default:
+                Microbot.log("Unhandled NPC ID: " + npc.getId());
+                break;
         }
 
-        if (npc != null && npc.getId() == JAGUAR_NPC_ID) {
-            jaguarSpawned = true;
+        // Handle Safe Spot NPC Spawning
+        if (npc.getId() == SAFE_SPOT_NPC_ID) {
+
+        }
+
+        // Handle Jaguar NPC Spawning
+        if (npc.getId() == JAGUAR_NPC_ID) {
+
         }
     }
+
 
 
     @Subscribe
@@ -249,9 +304,14 @@ public class ExamplePlugin extends Plugin {
     public void onChatMessage(ChatMessage chatMessage) {
             String chatMsg = chatMessage.getMessage().toLowerCase();
             if (chatMsg.contains(BOSS_DEAD_MSG)) {
-                setBossDead(true);
+                if(script != null){
+                    script.transitionToState(ExampleState.COLLECT_SUPPLIES);
+                }
             }
             if (chatMsg.contains("this jaguar doesn't possess any of your blood")){
+                if(script != null){
+                    script.transitionToState(ExampleState.JAGUARS);
+                }
                 resyncTicks = true;
             }
     }
@@ -310,8 +370,6 @@ public class ExamplePlugin extends Plugin {
     @Getter
     private int lastJaguarAttackTick = -1; // Default to -1, meaning no attack yet
 
-
-
     private void onTileObject(Tile tile, TileObject oldObject, TileObject newObject) {
         // Determine the tile's WorldPoint
         WorldPoint tileLocation = tile.getWorldLocation();
@@ -343,11 +401,6 @@ public class ExamplePlugin extends Plugin {
             Microbot.log("Shutting down script...");
             script.shutdown(); // Ensure proper cleanup
         }
-    }
-
-    @Provides
-    ExampleConfig provideConfig(ConfigManager configManager) {
-        return configManager.getConfig(ExampleConfig.class);
     }
 
 }
