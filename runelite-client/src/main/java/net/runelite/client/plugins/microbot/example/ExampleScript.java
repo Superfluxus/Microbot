@@ -1,11 +1,9 @@
 package net.runelite.client.plugins.microbot.example;
 
-import net.runelite.api.GameObject;
-import net.runelite.api.Skill;
+import net.runelite.api.*;
 import net.runelite.api.widgets.ComponentID;
 import net.runelite.api.widgets.Widget;
 import net.runelite.client.plugins.Plugin;
-import net.runelite.api.NPC;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.plugins.microbot.Script;
@@ -30,6 +28,7 @@ import java.util.Random;
 import net.runelite.client.plugins.microbot.util.npc.Rs2Npc;
 import net.runelite.client.plugins.microbot.util.widget.Rs2Widget;
 
+import javax.inject.Inject;
 import java.util.List;
 
 import java.util.concurrent.TimeUnit;
@@ -50,6 +49,9 @@ enum ExampleState {
 }
 
 public class ExampleScript extends Script {
+
+    @Inject
+    private Client client;
 
     private ExamplePlugin plugin;
 
@@ -399,7 +401,7 @@ public class ExampleScript extends Script {
         missingResources = validateInventoryDetailed();
         if (missingResources.isComplete()) {
             if (claimChest) {
-                Microbot.log("Claming rewards from last kill en route.");
+                Microbot.log("Claiming rewards from last kill en route.");
                 WorldPoint nearStove = new WorldPoint(1351, 9581, 0);
                 Rs2Walker.walkTo(nearStove);
                 sleepUntilTrue(() -> !Rs2Player.isAnimating());
@@ -417,30 +419,20 @@ public class ExampleScript extends Script {
 
     private void claimChestReward() {
         WorldPoint chestRoom = new WorldPoint(1513, 9563, 0);
-        while (this.isRunning() && !Rs2Player.getWorldLocation().equals(chestRoom) ||
-                Rs2Player.getWorldLocation().distanceTo(chestRoom) > 5) {
-            Rs2Walker.walkTo(chestRoom);
-            sleep(calculateSleepDuration());
-        }
+        Rs2Walker.walkTo(chestRoom);
+        sleepUntilTrue(() -> (!Rs2Player.isMoving() && !Rs2Player.isAnimating()));
+        sleep(1200,1800);
         WorldPoint nearChest = new WorldPoint(1513, 9578, 0);
         Microbot.log("Found chest room.");
-        sleep(calculateSleepDuration());
         Rs2Walker.walkFastCanvas(chestRoom);
+        sleep(calculateSleepDuration());
         sleepUntilTrue(() -> (!Rs2Player.isMoving() && !Rs2Player.isAnimating()));
         Microbot.log("Opening chest.");
         Rs2GameObject.interact(51346, "claim");
+        sleep(calculateSleepDuration());
         sleepUntilTrue(() -> (!Rs2Player.isMoving() && !Rs2Player.isAnimating()));
         Microbot.log("Waiting for widget popup.");
-        long timeout = System.currentTimeMillis() + 20_000; // 10-second timeout
-
-        while (this.isRunning() && !Rs2Widget.isWidgetVisible(56885268)) {
-            if (System.currentTimeMillis() > timeout) {
-                Microbot.log("Timeout reached while waiting for widget to become visible.");
-                currentState = ExampleState.GO_TO_FIGHT;
-                return;
-            }
-            sleep(400, 600);
-        }
+        sleep(calculateSleepDuration());
         Rs2Widget.clickWidget(56885268);
         sleep(calculateSleepDuration());
         Microbot.log("Rewards claimed, ready to fight again");
@@ -452,7 +444,6 @@ public class ExampleScript extends Script {
         Rs2GameObject.interact(EN_ROUTE_STOVE, "Make-cuppa");
         sleep(calculateSleepDuration());
         currentState = ExampleState.GO_TO_FIGHT;
-
     }
 
 
@@ -482,12 +473,9 @@ public class ExampleScript extends Script {
 
     private void goToFight() {
         Microbot.log("State: GoToFight");
-        Microbot.log("Line before getting widget");
         Widget parentWidget = null;
         boolean visibleTick = Rs2Widget.isWidgetVisible(56950788);
-        Microbot.log("Result of visibletick is" + visibleTick);
         if (visibleTick) {
-            Microbot.log("Tick is visible");
             currentState = ExampleState.CLAIM_CHEST;
             return;
         }
@@ -570,16 +558,10 @@ public class ExampleScript extends Script {
 
         // Step 2: Hit the boss
         sleepUntilTrue(() -> !(Rs2Player.isMoving() && Rs2Player.isAnimating()));
-        if (Rs2Npc.interact(13011, "Attack")) {
-            Microbot.log("Attacking boss from safe spot.");
-        } else {
-            Microbot.log("Failed to attack the boss.");
-        }
+        Rs2Npc.interact(13011, "Attack");
 
         Microbot.log("Start main fight loop");
         currentState = ExampleState.MAIN_FIGHT;
-        return;
-
     }
 
     private void mainfight() {
@@ -594,12 +576,15 @@ public class ExampleScript extends Script {
             if (currentCount > 0) {
                 Rs2Player.eatAt(75);
             } else {
-                if((Rs2Player.getRealSkillLevel(Skill.HITPOINTS) < 35)){
-                    Microbot.log("Trying to escape as food count is"  + Rs2Inventory.count(COOKED_LIZARD_ID) + "and our HP count is " + Rs2Player.getRealSkillLevel(Skill.HITPOINTS));
+                if((Rs2Player.getBoostedSkillLevel(Skill.HITPOINTS) < 50)){
+                    Microbot.log("Trying to escape as food count is"  + Rs2Inventory.count(COOKED_LIZARD_ID) + "and our HP count is " + Rs2Player.getBoostedSkillLevel(Skill.HITPOINTS));
                     Rs2GameObject.interact(53003, "Quick-escape");
+                    sleep(3000);
                     currentState = ExampleState.COLLECT_SUPPLIES;
-                return;
-            }
+                    return;
+            }else{
+                    Microbot.log("We have no food but we do have " + Rs2Player.getBoostedSkillLevel(Skill.HITPOINTS) + "HP");
+                }
             }
             safeSpotLocation = plugin.getCurrentSafeSpot();
             safespotexists = plugin.isSafeSpotAvailable();
@@ -642,7 +627,7 @@ public class ExampleScript extends Script {
                 Rs2Antiban.actionCooldown();
                 playerLocation = Rs2Player.getWorldLocation();
             }
-            sleep(200,450);
+            sleep(600,900);
         }
     }
 
@@ -737,6 +722,7 @@ public class ExampleScript extends Script {
 
     private void jaguars() {
         Microbot.log("Starting Jaguar Phase...");
+        boolean resync = false;
 
         // Ensure plugin instance is available
         for (Plugin p : Microbot.getPluginManager().getPlugins()) {
@@ -757,9 +743,10 @@ public class ExampleScript extends Script {
         // Move to safe spot if necessary
         WorldPoint safeSpotLocation = safeSpotNpc.getWorldLocation();
         if (Rs2Player.getWorldLocation().distanceTo(safeSpotLocation) > 1) {
+            final WorldPoint temp = safeSpotLocation;
             Microbot.log("Moving to the safe spot at: " + safeSpotLocation);
             Rs2Walker.walkFastCanvas(safeSpotLocation);
-            sleepUntilTrue(() -> !Rs2Player.isMoving() && Rs2Player.getWorldLocation().distanceTo(safeSpotLocation) <= 1);
+            sleepUntilTrue(() -> !Rs2Player.isMoving() && Rs2Player.getWorldLocation().distanceTo(temp) <= 1);
         }
 
         // Attack Jaguar initially
@@ -768,11 +755,17 @@ public class ExampleScript extends Script {
         Microbot.log("At safe spot. Waiting for blood splats and Jaguar cycle.");
 
         // Main loop: Process Jaguar phase
-        while (this.isRunning() && true) {
+        while (this.isRunning()){
             NPC jaguar = plugin.findNpcById(13021);
             if (jaguar == null) {
                 Microbot.log("Jaguar despawned. Exiting Jaguar Phase.");
                 currentState = ExampleState.MAIN_FIGHT;
+                return;
+            }
+            if (plugin.isBOSS_DEAD()) {
+                claimChest = true;
+                Microbot.log("Boss is dead, restart loop.");
+                currentState = ExampleState.COLLECT_SUPPLIES;
                 return;
             }
 
@@ -796,6 +789,8 @@ public class ExampleScript extends Script {
             // Tick monitoring logic
             int tickCounter = 0;
             int baseTick = plugin.getLastJaguarAttackTick(); // Synchronize with last attack tick
+            resync = plugin.isResyncTicks();
+            Microbot.log("Current state of resync:" + resync);
 
             if (baseTick == -1) {
                 Microbot.log("Jaguar has not attacked yet. Waiting...");
@@ -805,13 +800,25 @@ public class ExampleScript extends Script {
             Rs2Player.eatAt(80);
 
             while (this.isRunning() && plugin.findNpcById(13021) != null) {
-                int playerHP = Rs2Player.getRealSkillLevel(Skill.HITPOINTS);
+                int playerHP = Rs2Player.getBoostedSkillLevel(Skill.HITPOINTS);
                 int foodRemaining = Rs2Inventory.count(COOKED_LIZARD_ID);
-                if (playerHP < 35 && foodRemaining < 2) {
-                    Microbot.log("Trying to escape as food count is"  + Rs2Inventory.count(COOKED_LIZARD_ID) + "and our HP count is " + Rs2Player.getRealSkillLevel(Skill.HITPOINTS));
+                if (playerHP < 35) {
+                    Microbot.log("Trying to escape as our HP count is " + Rs2Player.getBoostedSkillLevel(Skill.HITPOINTS));
                     Rs2GameObject.interact(53003, "Quick-escape");
+                    sleep(3000);
                     currentState = ExampleState.COLLECT_SUPPLIES;
                     return;
+                }
+
+                if(resync){
+                    safeSpotLocation = safeSpotNpc.getWorldLocation();
+                    final WorldPoint temp = safeSpotLocation;
+                    if (Rs2Player.getWorldLocation().distanceTo(safeSpotLocation) > 1) {
+                        Microbot.log("Moving to the safe spot at: " + safeSpotLocation);
+                        Rs2Walker.walkFastCanvas(safeSpotLocation);
+                        sleepUntilTrue(() -> !Rs2Player.isMoving() && Rs2Player.getWorldLocation().distanceTo(temp) <= 1);
+                    }
+                    plugin.setResync(false);
                 }
                 int currentTick = plugin.getElapsedTicks();
                 closestBloodSplat = plugin.getClosestBloodSplat(Rs2Player.getWorldLocation());
@@ -820,17 +827,14 @@ public class ExampleScript extends Script {
                 int offset = (currentTick - baseTick) % 6;
 
                 if (offset == 0) {
-                    Microbot.log("Tick 0: Move away from blood splat or dangerous tiles.");
                     if (closestBloodSplat != null) {
                         Rs2Walker.walkFastCanvas(closestBloodSplat);
                     }
                 } else if (offset == 1) {
-                    Microbot.log("Tick 1: Re-attacking Jaguar.");
                     Rs2Npc.interact(13021, "Attack");
                 }
 
                 if (offset == 0) {
-                    Microbot.log("Synchronizing tick counter to Jaguar attack cycle.");
                     tickCounter = 0; // Reset counter to synchronize with the Jaguar
                 }
 

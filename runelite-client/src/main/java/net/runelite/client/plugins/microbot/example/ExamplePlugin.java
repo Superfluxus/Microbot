@@ -58,6 +58,13 @@ public class ExamplePlugin extends Plugin {
     @Getter
     private boolean jaguarAttacked = false; // Boolean to track if a Jaguar has spawned
 
+    @Getter
+    private boolean resyncTicks = false;
+
+    public void setResync(boolean changed) {
+        resyncTicks = changed;
+    }
+
     private static final Set<Integer> WHITELISTED_OBJECT_IDS = Set.of(
             51046 // Example: Blood splat ID
     );
@@ -84,7 +91,6 @@ public class ExamplePlugin extends Plugin {
     }
 
     private final ExecutorService taskQueue = Executors.newSingleThreadExecutor();
-    private volatile boolean eatQueued = false;
 
     @Override
     protected void startUp() throws Exception {
@@ -116,14 +122,10 @@ public class ExamplePlugin extends Plugin {
                 .orElse(null);
     }
 
-    private WorldPoint closestBloodSplat = null; // Closest blood splat tile
-    private int bloodSplatTickCounter = 0; // Tick counter for the current blood splat
-
     @Subscribe
     public void onGameTick(GameTick gameTick) {
         elapsedTicks = elapsedTicks + 1;
     }
-
 
     @Inject
     private Client client;
@@ -248,7 +250,9 @@ public class ExamplePlugin extends Plugin {
             String chatMsg = chatMessage.getMessage().toLowerCase();
             if (chatMsg.contains(BOSS_DEAD_MSG)) {
                 setBossDead(true);
-                Microbot.log("Boss dead message detected: " + chatMsg);
+            }
+            if (chatMsg.contains("this jaguar doesn't possess any of your blood")){
+                resyncTicks = true;
             }
     }
     @Subscribe
@@ -345,4 +349,5 @@ public class ExamplePlugin extends Plugin {
     ExampleConfig provideConfig(ConfigManager configManager) {
         return configManager.getConfig(ExampleConfig.class);
     }
+
 }
