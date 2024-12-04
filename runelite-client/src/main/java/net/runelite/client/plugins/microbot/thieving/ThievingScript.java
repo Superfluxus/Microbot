@@ -118,7 +118,7 @@ public class ThievingScript extends Script {
     }
 
     private void openCoinPouches(int amt) {
-        if (config.THIEVING_NPC() == ThievingNpc.WEALTHY_CITIZEN && Rs2Player.isAnimating(3000)) return;
+        if (config.THIEVING_NPC().equalsIgnoreCase(String.valueOf(ThievingNpc.WEALTHY_CITIZEN)) && Rs2Player.isAnimating(3000)) return;
         if (Rs2Inventory.hasItemAmount("coin pouch", amt, true)) {
             Rs2Inventory.interact("coin pouch", "Open-all");
         }
@@ -129,28 +129,37 @@ public class ThievingScript extends Script {
             Rs2Inventory.wield("dodgy necklace");
         }
     }
-
     private void pickpocket() {
-        if (config.THIEVING_NPC() == ThievingNpc.WEALTHY_CITIZEN) {
+        int coinpouches = Rs2Inventory.itemQuantity("coin pouch");
+        if(coinpouches > 5){
+            return;
+        }
+        String thievingNpc = config.THIEVING_NPC().trim(); // Retrieve and normalize user input
+
+        if (thievingNpc.equalsIgnoreCase("Wealthy Citizen")) {
             handleWealthyCitizen();
-        } else if (config.THIEVING_NPC() == ThievingNpc.ELVES) {
+        } else if (thievingNpc.equalsIgnoreCase("Elves")) {
             handleElves();
         } else {
-            Map<NPC, HighlightedNpc> highlightedNpcs =  net.runelite.client.plugins.npchighlight.NpcIndicatorsPlugin.getHighlightedNpcs();
+            // Get highlighted NPCs
+            Map<NPC, HighlightedNpc> highlightedNpcs = net.runelite.client.plugins.npchighlight.NpcIndicatorsPlugin.getHighlightedNpcs();
             if (highlightedNpcs.isEmpty()) {
-                if (Rs2Npc.pickpocket(config.THIEVING_NPC().getName())) {
+                // Attempt to pickpocket by name
+                if (Rs2Npc.pickpocket(thievingNpc)) {
                     Rs2Walker.setTarget(null);
                     sleep(50, 250);
-                } else if (Rs2Npc.getNpc(config.THIEVING_NPC().getName()) == null){
+                } else if (Rs2Npc.getNpc(thievingNpc) == null) { // Ensure no null pointer error
                     Rs2Walker.walkTo(initialPlayerLocation);
                 }
             } else {
+                // Use highlighted NPCs
                 if (Rs2Npc.pickpocket(highlightedNpcs)) {
                     sleep(50, 250);
                 }
             }
         }
     }
+
 
     private void handleWealthyCitizen() {
         List<NPC> wealthyCitizenInteracting = Rs2Npc.getNpcs("Wealthy citizen")

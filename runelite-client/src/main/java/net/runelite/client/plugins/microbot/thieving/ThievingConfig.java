@@ -30,14 +30,14 @@ public interface ThievingConfig extends Config {
     @ConfigItem(
             keyName = "Npc",
             name = "Npc",
-            description = "Choose the npc to start thieving from",
+            description = "Enter the name of the NPC to start thieving from",
             position = 0,
             section = generalSection
     )
-    default ThievingNpc THIEVING_NPC()
-    {
-        return ThievingNpc.NONE;
+    default String THIEVING_NPC() {
+        return "";
     }
+
 
     @ConfigSection(
             name = "buffs",
