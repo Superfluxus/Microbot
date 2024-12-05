@@ -125,7 +125,7 @@ public class MorytaniaDiaryRequirement extends GenericDiaryRequirement
 			new SkillRequirement(Skill.CRAFTING, 84));
 		add("Kill an Abyssal demon in the Slayer Tower.",
 			new SkillRequirement(Skill.SLAYER, 85));
-		add("Loot the Barrows chest while wearing any complete barrows set.",
+		add("Loot the Barrows chest while wearing any complete autobarrows set.",
 			new SkillRequirement(Skill.DEFENCE, 70),
 			new OrRequirement(
 				new SkillRequirement(Skill.ATTACK, 70),

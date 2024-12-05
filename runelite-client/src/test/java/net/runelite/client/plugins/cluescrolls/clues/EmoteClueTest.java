@@ -46,7 +46,7 @@ public class EmoteClueTest
 	@Test
 	public void itemRequirementsFullBarrowsSetNonDegraged()
 	{
-		EmoteClue barrowsClue = EmoteClue.forText("Do a jig at the barrows chest. Beware of double agents! Equip any full barrows set.");
+		EmoteClue barrowsClue = EmoteClue.forText("Do a jig at the autobarrows chest. Beware of double agents! Equip any full autobarrows set.");
 		ItemRequirement[] requirements = barrowsClue.getItemRequirements();
 
 		assertEquals(1, requirements.length);
@@ -64,7 +64,7 @@ public class EmoteClueTest
 	@Test
 	public void itemRequirementsFullBarrowsSetDegraded()
 	{
-		EmoteClue barrowsClue = EmoteClue.forText("Do a jig at the barrows chest. Beware of double agents! Equip any full barrows set.");
+		EmoteClue barrowsClue = EmoteClue.forText("Do a jig at the autobarrows chest. Beware of double agents! Equip any full autobarrows set.");
 		ItemRequirement[] requirements = barrowsClue.getItemRequirements();
 
 		assertEquals(1, requirements.length);

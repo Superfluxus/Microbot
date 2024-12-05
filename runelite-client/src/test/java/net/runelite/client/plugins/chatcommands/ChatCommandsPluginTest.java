@@ -296,7 +296,7 @@ public class ChatCommandsPluginTest
 	@Test
 	public void testBarrows()
 	{
-		testKillCountChatMessage("barrows chests", "Your Barrows chest count is: <col=ff0000>277</col>.", 277);
+		testKillCountChatMessage("autobarrows chests", "Your Barrows chest count is: <col=ff0000>277</col>.", 277);
 	}
 
 	@Test

@@ -95,7 +95,7 @@ public interface ScreenshotConfig extends Config
 	@ConfigItem(
 		keyName = "rewards",
 		name = "Screenshot rewards",
-		description = "Configures whether screenshots are taken of clues, barrows, and quest completion.",
+		description = "Configures whether screenshots are taken of clues, autobarrows, and quest completion.",
 		position = 3,
 		section = whatSection
 	)

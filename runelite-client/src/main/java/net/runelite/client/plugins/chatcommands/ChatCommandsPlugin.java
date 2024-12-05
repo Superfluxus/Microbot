@@ -2216,7 +2216,7 @@ public class ChatCommandsPlugin extends Plugin
 
 			case "wt":
 				return "Wintertodt";
-			case "barrows":
+			case "autobarrows":
 				return "Barrows Chests";
 			case "herbi":
 				return "Herbiboar";

@@ -139,7 +139,7 @@ public interface ShadesKillerConfig extends Config {
             section = teleportSection
     )
     default String teleportItemToShades() {
-        return "barrows teleport";
+        return "autobarrows teleport";
     }
 
     @ConfigItem(

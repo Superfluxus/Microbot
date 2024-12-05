@@ -406,11 +406,19 @@ public class AutoBarrowsScript extends Script {
         Microbot.log("Wait for combat");
         NPC target = Microbot.getClient().getHintArrowNpc();
         Rs2Npc.attack(target);
-        sleepUntilTrue(() -> !Rs2Combat.inCombat() && target.getHealthRatio() == 0 && target.isDead());
-        if(target.isDead()){
+        sleep(1200);
+        Microbot.log("Waiting for fight to complete...");
+        // Sleep until the target is dead or the fight ends
+        boolean fightEnded = sleepUntil(() -> {
+            boolean targetIsDead = target.getHealthRatio() == 0 || target.isDead();
+            boolean notInCombat = !Rs2Combat.inCombat();
+            boolean brotherKilled = Microbot.getVarbitValue(tunnelBrother.getKilledVarbit()) > 0;
+            return targetIsDead || notInCombat || brotherKilled;
+        }, 15000); // Timeout after 15 seconds
+        if(fightEnded){
             Rs2GameObject.interact(20973,"Open");
         }else{
-            sleep(4000);
+            sleep(8000);
             Rs2GameObject.interact(20973,"Open");
         }
         sleep(2000);

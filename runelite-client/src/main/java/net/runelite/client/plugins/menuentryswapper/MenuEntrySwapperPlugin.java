@@ -303,7 +303,7 @@ public class MenuEntrySwapperPlugin extends Plugin
 		swap("teleport menu", "al kharid", config::swapJewelleryBox);
 
 		Arrays.asList(
-			"annakarl", "ape atoll dungeon", "ardougne", "barrows", "battlefront", "camelot", "carrallanger",
+			"annakarl", "ape atoll dungeon", "ardougne", "autobarrows", "battlefront", "camelot", "carrallanger",
 			"catherby", "cemetery", "draynor manor", "falador", "fenkenstrain's castle", "fishing guild", "ghorrock",
 			"grand exchange", "great kourend", "harmony island", "kharyrll", "lumbridge", "arceuus library",
 			"lunar isle", "marim", "mind altar", "salve graveyard", "seers' village", "senntisten", "troll stronghold",

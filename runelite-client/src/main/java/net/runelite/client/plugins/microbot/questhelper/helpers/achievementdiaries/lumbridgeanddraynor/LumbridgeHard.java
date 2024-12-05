@@ -269,7 +269,7 @@ public class LumbridgeHard extends ComplexStateQuestHelper {
         moveToBasementForGloves = new ObjectStep(this, ObjectID.TRAPDOOR_14880, new WorldPoint(3209, 3216, 0),
                 "Climb down the trapdoor in the Lumbridge Castle.", coins);
         barrowsGloves = new ObjectStep(this, 12308, new WorldPoint(3219, 9623, 0),
-                "Purchase the barrows gloves from the bank chest. Right click and select 'Buy-items'.",
+                "Purchase the autobarrows gloves from the bank chest. Right click and select 'Buy-items'.",
                 coins);
         // 12308 is mine and I only have FULL access, and the ELITE version wouldn't make sense here
 

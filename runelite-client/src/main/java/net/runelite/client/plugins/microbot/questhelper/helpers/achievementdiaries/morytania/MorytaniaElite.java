@@ -159,7 +159,7 @@ public class MorytaniaElite extends ComplexStateQuestHelper {
                 new ItemRequirement("Hammers", ItemCollections.TORAG_HAMMERS), new ItemRequirement("Body",
                 ItemCollections.TORAG_BODY), new ItemRequirement("legs", ItemCollections.TORAG_LEGS)).isNotConsumed();
 
-        barrowsSet = new ItemRequirements(LogicType.OR, "Any complete barrows set", ahrimSet, karilSet, guthanSet,
+        barrowsSet = new ItemRequirements(LogicType.OR, "Any complete autobarrows set", ahrimSet, karilSet, guthanSet,
                 veracSet, dharokSet, toragSet).showConditioned(notBarrowsChest).isNotConsumed();
 
         combatGear = new ItemRequirement("Combat gear", -1, -1).isNotConsumed();
@@ -199,7 +199,7 @@ public class MorytaniaElite extends ComplexStateQuestHelper {
                         "be found in a shed at the entrance.", spade, barrowsSet, food);
         // equipped doesn't work, it's highlighted as long as it's in inventory.
         barrowsChest = new ObjectStep(this, 20973, new WorldPoint(3552, 9696, 0),
-                "Loot the chest wearing a complete set of barrows gear.", barrowsSet.equipped());
+                "Loot the chest wearing a complete set of autobarrows gear.", barrowsSet.equipped());
 
         cremateShade = new ObjectStep(this, ObjectID.FUNERAL_PYRE, new WorldPoint(3500, 3266, 0),
                 "Place the pyre logs and shade remains on the funeral pyre and light them with a tinderbox", tinderbox,
