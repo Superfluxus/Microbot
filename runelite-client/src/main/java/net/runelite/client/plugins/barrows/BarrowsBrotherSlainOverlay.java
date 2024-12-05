@@ -89,7 +89,7 @@ class BarrowsBrotherSlainOverlay extends OverlayPanel
 	}
 
 	/**
-	 * Compute the barrows reward potential. Potential rewards are based off of the amount of
+	 * Compute the autobarrows reward potential. Potential rewards are based off of the amount of
 	 * potential.
 	 * <p>
 	 * The reward potential thresholds are as follows:

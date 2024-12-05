@@ -88,7 +88,7 @@ public class BarrowsPlugin extends Plugin
 	private OverlayManager overlayManager;
 
 	@Inject
-	private BarrowsOverlay barrowsOverlay;
+	private net.runelite.client.plugins.barrows.BarrowsOverlay barrowsOverlay;
 
 	@Inject
 	private BarrowsBrotherSlainOverlay brotherOverlay;
@@ -149,7 +149,7 @@ public class BarrowsPlugin extends Plugin
 	@Subscribe
 	public void onConfigChanged(ConfigChanged event)
 	{
-		if (event.getGroup().equals("barrows") && !config.showPrayerDrainTimer())
+		if (event.getGroup().equals("autobarrows") && !config.showPrayerDrainTimer())
 		{
 			stopPrayerDrainTimer();
 		}
@@ -225,7 +225,7 @@ public class BarrowsPlugin extends Plugin
 	@Subscribe
 	public void onBeforeRender(BeforeRender beforeRender)
 	{
-		// The barrows brothers and potential overlays have timers to unhide them each tick. Set them
+		// The autobarrows brothers and potential overlays have timers to unhide them each tick. Set them
 		// hidden here instead of in the overlay, because if the overlay renders on the ABOVE_WIDGETS
 		// layer due to being moved outside of the snap corner, it will be running after the overlays
 		// had already been rendered.
